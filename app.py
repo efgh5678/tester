@@ -122,7 +122,7 @@ def create_jobs():
             urls_to_process = urls_to_process[current_batch_size:]
             payload['url'] = batch_urls
 
-            interval = 1.0 / (rate_limit / len(batch_urls)) if rate_limit > 0 else 0
+            interval = len(batch_urls) / rate_limit if rate_limit > 0 else 0
 
             try:
                 response = requests.post(
@@ -134,6 +134,10 @@ def create_jobs():
                 successful_creations += len(response.json().get('queries', []))
             except requests.exceptions.RequestException as e:
                 print(f"Error creating batch jobs: {e}")
+                with task_lock:
+                    task_status[task_id]['status'] = 'failed'
+                    task_status[task_id]['error'] = f"Failed to create a batch of jobs: {e}"
+                return
 
             with task_lock:
                 task_status[task_id]['progress'] = successful_creations
