@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oxylabs Web Scraper API Testing Tool</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Oxylabs Web Scraper API Testing Tool</h1>
+
+    <div class="container">
+        <!-- URL Discovery -->
+        <div class="section">
+            <h2>Step 1: Discover URLs</h2>
+            <form id="discover-form">
+                <input type="text" id="start-url" placeholder="Enter domain or starting URL" required>
+                <input type="number" id="target-count" placeholder="Target URL count" required>
+                <button type="submit">Discover URLs</button>
+            </form>
+            <div id="discover-progress"></div>
+        </div>
+
+        <!-- URL Selection -->
+        <div class="section">
+            <h2>Step 2: Select URLs</h2>
+            <div class="controls">
+                <select id="domain-select"></select>
+                <input type="text" id="filter-input" placeholder="Filter URLs">
+                <button id="sort-asc">Sort A-Z</button>
+                <button id="sort-desc">Sort Z-A</button>
+                <button id="select-all">Select All</button>
+                <button id="unselect-all">Unselect All</button>
+            </div>
+            <div id="url-list" class="scrollable-list"></div>
+            <div id="selected-count">Selected URLs: 0</div>
+        </div>
+
+        <!-- Bulk Job Creation -->
+        <div class="section">
+            <h2>Step 3: Create Bulk Jobs</h2>
+            <form id="create-jobs-form">
+                <input type="number" id="job-target-count" placeholder="Target job count" required>
+                <input type="number" id="rate-limit" placeholder="Jobs per second" value="10">
+                <textarea id="custom-params" placeholder="Enter custom JSON parameters"></textarea>
+                <button type="submit">Create Jobs</button>
+            </form>
+            <div id="job-progress"></div>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
