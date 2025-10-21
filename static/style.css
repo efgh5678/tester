@@ -1,0 +1,26 @@
+body {
+    font-family: sans-serif;
+    margin: 20px;
+}
+
+.container {
+    display: flex;
+    justify-content: space-around;
+}
+
+.section {
+    border: 1px solid #ccc;
+    padding: 20px;
+    width: 30%;
+}
+
+.scrollable-list {
+    height: 300px;
+    overflow-y: scroll;
+    border: 1px solid #eee;
+    padding: 10px;
+}
+
+.controls {
+    margin-bottom: 10px;
+}
