@@ -56,22 +56,23 @@ def discover_urls(start_url, target_count, username, password, task_id, task_sta
                 try:
                     response = requests.post('https://data.oxylabs.io/v1/queries', auth=(username, password), json=payload)
                     response.raise_for_status()
-                    results_url = [link['href_list'][0] for link in response.json()['_links'] if link['rel'] == 'results-content-parsed'][0]
+                    result_pages = [link['href_list'] for link in response.json()['_links'] if link['rel'] == 'results-content-parsed'][0]
 
-                    time.sleep(5)
-                    backoff_time = 1
-                    while True:
-                        results_response = requests.get(results_url)
-                        if results_response.status_code == 200:
-                            break
-                        time.sleep(backoff_time)
-                        backoff_time *= 2
+                    for page_url in result_pages:
+                        time.sleep(5)
+                        backoff_time = 1
+                        while True:
+                            results_response = requests.get(page_url)
+                            if results_response.status_code == 200:
+                                break
+                            time.sleep(backoff_time)
+                            backoff_time *= 2
 
-                    for result in results_response.json():
-                        for link in result.get('links', []):
-                            discovered_url = link.get('url')
-                            if discovered_url and get_domain_from_url(discovered_url).endswith(target_domain):
-                                c.execute("INSERT OR IGNORE INTO urls (domain_id, starting_url, url) VALUES (?, ?, ?)", (domain_id, url, discovered_url))
+                        for result in results_response.json():
+                            for link in result.get('links', []):
+                                discovered_url = link.get('url')
+                                if discovered_url and get_domain_from_url(discovered_url).endswith(target_domain):
+                                    c.execute("INSERT OR IGNORE INTO urls (domain_id, starting_url, url) VALUES (?, ?, ?)", (domain_id, url, discovered_url))
 
                     c.execute("UPDATE urls SET has_been_used_to_find_more_urls = 1 WHERE url = ?", (url,))
                     conn.commit()
