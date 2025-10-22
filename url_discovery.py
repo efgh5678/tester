@@ -8,11 +8,16 @@ def get_domain_from_url(url):
     parsed_url = urlparse(url)
     return parsed_url.netloc
 
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 def discover_urls(start_url, target_count, username, password, task_id, task_status, task_lock):
     """
     Discovers URLs from a given starting URL up to a target count.
     Updates the task_status dictionary with the progress and persists state in the DB.
     """
+    logging.info(f"Starting URL discovery for {start_url} with target count {target_count}")
     if not start_url.startswith('http'):
         start_url = f"https://{start_url}"
 
@@ -64,7 +69,7 @@ def discover_urls(start_url, target_count, username, password, task_id, task_sta
                         c.execute("UPDATE domains SET discovery_status = 'stopped' WHERE id = ?", (domain_id,))
                         return
                 
-                print(f"Processing {url}...")
+                logging.info(f"Processing {url} for discovery.")
                 payload = {"url": url, "parse": True, "parser_preset": "link_parser"}
                 try:
                     response = requests.post('https://data.oxylabs.io/v1/queries', auth=(username, password), json=payload)
@@ -89,6 +94,7 @@ def discover_urls(start_url, target_count, username, password, task_id, task_sta
 
                         # Helper to process a list of links
                         def process_links(links_list):
+                            new_urls_found = 0
                             for link in links_list:
                                 # Normalize link to a string URL
                                 if isinstance(link, str):
@@ -107,6 +113,9 @@ def discover_urls(start_url, target_count, username, password, task_id, task_sta
                                 # Filter by target domain (allow subdomains)
                                 if get_domain_from_url(absolute_url).endswith(target_domain):
                                     c.execute("INSERT OR IGNORE INTO urls (domain_id, starting_url, url) VALUES (?, ?, ?)", (domain_id, url, absolute_url))
+                                    if c.rowcount > 0:
+                                        new_urls_found += 1
+                            logging.info(f"Found {new_urls_found} new URLs from {url}")
 
                         # Shape A: content links returned directly at top level
                         if isinstance(results_json, dict) and 'links' in results_json:
@@ -132,7 +141,7 @@ def discover_urls(start_url, target_count, username, password, task_id, task_sta
         c.execute("UPDATE domains SET discovery_status = 'completed' WHERE id = ?", (domain_id,))
         with task_lock:
             task_status[task_id]['status'] = 'completed'
-        print(f"URL discovery complete.")
+        logging.info(f"URL discovery complete for {start_url}.")
 
     except Exception as e:
         print(f"A critical error occurred during discovery for {target_domain}: {e}")

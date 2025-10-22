@@ -1,7 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
     const discoverForm = document.getElementById('discover-form');
     const discoverProgress = document.getElementById('discover-progress');
-    const domainSelect = document.getElementById('domain-select');
+    const domainSearch = document.getElementById('domain-search');
+    const domainList = document.getElementById('domain-list');
     const urlList = document.getElementById('url-list');
     const filterInput = document.getElementById('filter-input');
     const sortAscBtn = document.getElementById('sort-asc');
@@ -109,17 +110,49 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadDomains = async () => {
         const response = await fetch('/domains');
         const domains = await response.json();
-        domainSelect.innerHTML = domains.map(d => `<option value="${d}">${d}</option>`).join('');
-        if (domains.length > 0) {
-            loadUrls(domains[0]);
-        }
+        let domainHTML = '<div><input type="radio" name="domain" value="all" checked> All Domains</div>';
+        domainHTML += domains.map(d => `<div><input type="radio" name="domain" value="${d}"> ${d}</div>`).join('');
+        domainList.innerHTML = domainHTML;
+        loadUrls('all');
+
+        domainList.addEventListener('change', (e) => {
+            if (e.target.name === 'domain') {
+                loadUrls(e.target.value);
+            }
+        });
+
+        domainSearch.addEventListener('input', () => {
+            const searchText = domainSearch.value.toLowerCase();
+            domainList.querySelectorAll('div').forEach(div => {
+                const domainName = div.textContent.trim().toLowerCase();
+                if (domainName.includes(searchText)) {
+                    div.style.display = 'block';
+                } else {
+                    div.style.display = 'none';
+                }
+            });
+        });
     };
 
     // Load URLs for a domain
     const loadUrls = async (domain) => {
-        const response = await fetch(`/urls/${domain}`);
-        currentUrls = await response.json();
-        renderUrls(currentUrls);
+        if (domain === 'all') {
+            const response = await fetch('/domains');
+            const domains = await response.json();
+            let allUrls = [];
+            for (const d of domains) {
+                const urlsResponse = await fetch(`/urls/${d}`);
+                const urls = await urlsResponse.json();
+                allUrls = allUrls.concat(urls);
+            }
+            currentUrls = [...new Set(allUrls)];
+            renderUrls(currentUrls);
+        } else {
+            const response = await fetch(`/urls/${domain}`);
+            const urls = await response.json();
+            currentUrls = [...new Set(urls)];
+            renderUrls(currentUrls);
+        }
     };
 
     // Render URLs
@@ -130,7 +163,6 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Event Listeners
-    domainSelect.addEventListener('change', () => loadUrls(domainSelect.value));
     filterInput.addEventListener('input', () => {
         const filterText = filterInput.value.toLowerCase();
         const filteredUrls = currentUrls.filter(url => url.toLowerCase().includes(filterText));
@@ -143,11 +175,8 @@ document.addEventListener('DOMContentLoaded', () => {
     urlList.addEventListener('change', updateSelectedCount);
 
     const setAllCheckboxes = (checked) => {
-        displayedUrls.forEach((url, index) => {
-            const checkbox = document.getElementById(`url-${index}`);
-            if (checkbox) {
-                checkbox.checked = checked;
-            }
+        urlList.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+            checkbox.checked = checked;
         });
         updateSelectedCount();
     };
@@ -160,34 +189,39 @@ document.addEventListener('DOMContentLoaded', () => {
     // Bulk Job Creation
     createJobsForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const selectedUrls = Array.from(urlList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.dataset.url);
-        if (selectedUrls.length === 0) {
-            alert('Please select at least one URL.');
-            return;
+        try {
+            const selectedUrls = Array.from(urlList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.dataset.url);
+            if (selectedUrls.length === 0) {
+                alert('Please select at least one URL.');
+                return;
+            }
+            const targetCount = document.getElementById('job-target-count').value;
+            const rateLimit = document.getElementById('rate-limit').value;
+            const customParams = document.getElementById('custom-params').value;
+            const response = await fetch('/create-jobs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    urls: selectedUrls,
+                    target_count: parseInt(targetCount),
+                    rate_limit: parseInt(rateLimit),
+                    custom_params: customParams
+                })
+            });
+            const result = await response.json();
+            jobProgress.innerHTML = '';
+            result.task_ids.forEach(taskId => {
+                currentJobsTaskIds.push(taskId);
+                const progressElement = document.createElement('div');
+                progressElement.id = `task-${taskId}`;
+                jobProgress.appendChild(progressElement);
+                pollStatus(taskId, progressElement, 'jobs');
+            });
+            stopJobsBtn.style.display = 'inline-block';
+        } catch (error) {
+            console.error('Error creating jobs:', error);
+            alert('Failed to create jobs: ' + error.message);
         }
-        const targetCount = document.getElementById('job-target-count').value;
-        const rateLimit = document.getElementById('rate-limit').value;
-        const customParams = document.getElementById('custom-params').value;
-        const response = await fetch('/create-jobs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                urls: selectedUrls,
-                target_count: parseInt(targetCount),
-                rate_limit: parseInt(rateLimit),
-                custom_params: customParams
-            })
-        });
-        const result = await response.json();
-        jobProgress.innerHTML = '';
-        result.task_ids.forEach(taskId => {
-            currentJobsTaskIds.push(taskId);
-            const progressElement = document.createElement('div');
-            progressElement.id = `task-${taskId}`;
-            jobProgress.appendChild(progressElement);
-            pollStatus(taskId, progressElement, 'jobs');
-        });
-        stopJobsBtn.style.display = 'inline-block';
     });
 
     // Stop button event listeners
