@@ -8,6 +8,12 @@ import time
 from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
 from url_discovery import discover_urls
+from urllib.parse import urlparse
+
+def get_domain_from_url(url):
+    """Extracts the domain from a URL."""
+    parsed_url = urlparse(url)
+    return parsed_url.netloc
 
 # Load environment variables from .env file
 load_dotenv()
@@ -35,35 +41,42 @@ def index():
 @app.route('/discover', methods=['POST'])
 def discover():
     data = request.get_json()
-    start_url = data.get('url')
+    start_urls = data.get('urls')
     target_count = data.get('count')
 
-    if not start_url or not target_count:
-        return jsonify({'error': 'Missing url or count'}), 400
+    if not start_urls or not target_count:
+        return jsonify({'error': 'Missing urls or count'}), 400
 
-    task_id = str(uuid.uuid4())
-    with task_lock:
-        task_status[task_id] = {'status': 'pending', 'progress': 0, 'total': target_count}
+    task_ids = []
+    for start_url in start_urls:
+        task_id = str(uuid.uuid4())
+        with task_lock:
+            task_status[task_id] = {
+                'status': 'pending',
+                'progress': 0,
+                'total': target_count,
+                'url': start_url
+            }
+        task_ids.append(task_id)
 
-    def run_discovery():
-        try:
-            discover_urls(start_url, target_count, OXYLABS_USERNAME, OXYLABS_PASSWORD, task_id, task_status, task_lock)
-        except Exception as e:
-            with task_lock:
-                task_status[task_id]['status'] = 'failed'
-                task_status[task_id]['error'] = str(e)
-        finally:
-            # Clean up thread reference when done
-            with thread_lock:
-                if task_id in running_threads:
-                    del running_threads[task_id]
+        def run_discovery(start_url, task_id):
+            try:
+                discover_urls(start_url, target_count, OXYLABS_USERNAME, OXYLABS_PASSWORD, task_id, task_status, task_lock)
+            except Exception as e:
+                with task_lock:
+                    task_status[task_id]['status'] = 'failed'
+                    task_status[task_id]['error'] = str(e)
+            finally:
+                with thread_lock:
+                    if task_id in running_threads:
+                        del running_threads[task_id]
 
-    thread = threading.Thread(target=run_discovery)
-    with thread_lock:
-        running_threads[task_id] = thread
-    thread.start()
+        thread = threading.Thread(target=run_discovery, args=(start_url, task_id))
+        with thread_lock:
+            running_threads[task_id] = thread
+        thread.start()
 
-    return jsonify({'task_id': task_id})
+    return jsonify({'task_ids': task_ids})
 
 @app.route('/status/<task_id>', methods=['GET'])
 def get_status(task_id):
@@ -108,74 +121,81 @@ def create_jobs():
     if not urls or not target_count:
         return jsonify({'error': 'Missing urls or target_count'}), 400
 
-    task_id = str(uuid.uuid4())
-    with task_lock:
-        task_status[task_id] = {'status': 'pending', 'progress': 0, 'total': target_count}
+    urls_by_domain = {}
+    for url in urls:
+        domain = get_domain_from_url(url)
+        if domain not in urls_by_domain:
+            urls_by_domain[domain] = []
+        urls_by_domain[domain].append(url)
 
-    def run_job_creation():
-        try:
-            custom_params = json.loads(custom_params_str) if custom_params_str else {}
-        except json.JSONDecodeError:
-            with task_lock:
-                task_status[task_id]['status'] = 'failed'
-                task_status[task_id]['error'] = 'Invalid custom JSON parameters'
-            return
+    task_ids = []
+    for domain, domain_urls in urls_by_domain.items():
+        task_id = str(uuid.uuid4())
+        with task_lock:
+            task_status[task_id] = {
+                'status': 'pending',
+                'progress': 0,
+                'total': min(target_count, len(domain_urls)),
+                'domain': domain
+            }
+        task_ids.append(task_id)
 
-        payload = {"url": []}
-        payload.update(custom_params)
-
-        successful_creations = 0
-
-        urls_to_process = urls
-
-        while successful_creations < target_count and urls_to_process:
-            # Check if task was stopped
-            with task_lock:
-                if task_status[task_id]['status'] == 'stopped':
-                    return
-            
-            remaining_target = target_count - successful_creations
-            current_batch_size = min(100, remaining_target, len(urls_to_process))
-
-            batch_urls = urls_to_process[:current_batch_size]
-            urls_to_process = urls_to_process[current_batch_size:]
-            payload['url'] = batch_urls
-
-            interval = len(batch_urls) / rate_limit if rate_limit > 0 else 0
-
+        def run_job_creation(domain_urls, task_id):
             try:
-                response = requests.post(
-                    'https://data.oxylabs.io/v1/queries/batch',
-                    auth=(OXYLABS_USERNAME, OXYLABS_PASSWORD),
-                    json=payload
-                )
-                response.raise_for_status()
-                successful_creations += len(response.json().get('queries', []))
-            except requests.exceptions.RequestException as e:
-                print(f"Error creating batch jobs: {e}")
+                custom_params = json.loads(custom_params_str) if custom_params_str else {}
+            except json.JSONDecodeError:
                 with task_lock:
                     task_status[task_id]['status'] = 'failed'
-                    task_status[task_id]['error'] = f"Failed to create a batch of jobs: {e}"
+                    task_status[task_id]['error'] = 'Invalid custom JSON parameters'
                 return
 
+            payload = {"url": []}
+            payload.update(custom_params)
+            successful_creations = 0
+            urls_to_process = domain_urls[:target_count]
+
+            while successful_creations < len(urls_to_process):
+                with task_lock:
+                    if task_status[task_id]['status'] == 'stopped':
+                        return
+
+                remaining_target = len(urls_to_process) - successful_creations
+                current_batch_size = min(100, remaining_target)
+                batch_urls = urls_to_process[successful_creations:successful_creations + current_batch_size]
+                payload['url'] = batch_urls
+                interval = len(batch_urls) / rate_limit if rate_limit > 0 else 0
+
+                try:
+                    response = requests.post(
+                        'https://data.oxylabs.io/v1/queries/batch',
+                        auth=(OXYLABS_USERNAME, OXYLABS_PASSWORD),
+                        json=payload
+                    )
+                    response.raise_for_status()
+                    successful_creations += len(response.json().get('queries', []))
+                except requests.exceptions.RequestException as e:
+                    with task_lock:
+                        task_status[task_id]['status'] = 'failed'
+                        task_status[task_id]['error'] = f"Failed to create a batch of jobs: {e}"
+                    return
+
+                with task_lock:
+                    task_status[task_id]['progress'] = successful_creations
+                time.sleep(interval)
+
             with task_lock:
-                task_status[task_id]['progress'] = successful_creations
-            time.sleep(interval)
+                if task_status[task_id]['status'] != 'stopped':
+                    task_status[task_id]['status'] = 'completed'
+            with thread_lock:
+                if task_id in running_threads:
+                    del running_threads[task_id]
 
-        with task_lock:
-            if task_status[task_id]['status'] != 'stopped':
-                task_status[task_id]['status'] = 'completed'
-        # Clean up thread reference when done
+        thread = threading.Thread(target=run_job_creation, args=(domain_urls, task_id))
         with thread_lock:
-            if task_id in running_threads:
-                del running_threads[task_id]
+            running_threads[task_id] = thread
+        thread.start()
 
-    thread = threading.Thread(target=run_job_creation)
-    with thread_lock:
-        running_threads[task_id] = thread
-    thread.start()
-
-    return jsonify({'task_id': task_id})
+    return jsonify({'task_ids': task_ids})
 
 @app.route('/stop/<task_id>', methods=['POST'])
 def stop_task(task_id):

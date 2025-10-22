@@ -122,8 +122,12 @@ def discover_urls(start_url, target_count, username, password, task_id, task_sta
 
                 except requests.exceptions.RequestException as e:
                     print(f"Error processing {url}: {e}")
+                    with task_lock:
+                        task_status[task_id]['status'] = 'failed'
+                        task_status[task_id]['error'] = str(e)
                     c.execute("UPDATE urls SET has_been_used_to_find_more_urls = 1 WHERE url = ?", (url,))
                     conn.commit()
+                    return
 
         c.execute("UPDATE domains SET discovery_status = 'completed' WHERE id = ?", (domain_id,))
         with task_lock:

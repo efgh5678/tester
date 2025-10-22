@@ -23,25 +23,56 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentUrls = [];
     let displayedUrls = [];
-    let currentDiscoveryTaskId = null;
-    let currentJobsTaskId = null;
+    let currentDiscoveryTaskIds = [];
+    let currentJobsTaskIds = [];
 
     // Polling function for task status
     const pollStatus = async (taskId, progressElement, taskType) => {
         const interval = setInterval(async () => {
             const response = await fetch(`/status/${taskId}`);
             const data = await response.json();
-            progressElement.textContent = `Status: ${data.status}, Progress: ${data.progress}/${data.total}`;
+            const percentage = data.total > 0 ? (data.progress / data.total) * 100 : 0;
+            if (taskType === 'discovery') {
+                progressElement.innerHTML = `
+                    <div>
+                        <span>URL: ${data.url} - Status: ${data.status}</span>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" style="width: ${percentage}%;"></div>
+                        </div>
+                        <span>${data.progress}/${data.total}</span>
+                    </div>
+                `;
+            } else if (taskType === 'jobs') {
+                progressElement.innerHTML = `
+                    <div>
+                        <span>Domain: ${data.domain} - Status: ${data.status}</span>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" style="width: ${percentage}%;"></div>
+                        </div>
+                        <span>${data.progress}/${data.total}</span>
+                    </div>
+                `;
+            }
+
             if (data.status === 'completed' || data.status === 'failed' || data.status === 'stopped') {
                 clearInterval(interval);
                 if (taskType === 'discovery') {
-                    stopDiscoveryBtn.style.display = 'none';
-                    currentDiscoveryTaskId = null;
-                    // Always refresh domains so partial results are visible even on failure/stopped
+                    const index = currentDiscoveryTaskIds.indexOf(taskId);
+                    if (index > -1) {
+                        currentDiscoveryTaskIds.splice(index, 1);
+                    }
+                    if (currentDiscoveryTaskIds.length === 0) {
+                        stopDiscoveryBtn.style.display = 'none';
+                    }
                     loadDomains();
                 } else if (taskType === 'jobs') {
-                    stopJobsBtn.style.display = 'none';
-                    currentJobsTaskId = null;
+                    const index = currentJobsTaskIds.indexOf(taskId);
+                    if (index > -1) {
+                        currentJobsTaskIds.splice(index, 1);
+                    }
+                    if (currentJobsTaskIds.length === 0) {
+                        stopJobsBtn.style.display = 'none';
+                    }
                 }
             }
         }, 2000);
@@ -50,39 +81,28 @@ document.addEventListener('DOMContentLoaded', () => {
     // URL Discovery
     discoverForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        console.log('Discovery form submitted');
-        
-        const startUrl = document.getElementById('start-url').value;
+        const startUrls = document.getElementById('start-urls').value.split('\n').filter(url => url.trim() !== '');
         const targetCount = document.getElementById('target-count').value;
-        
-        if (!startUrl || !targetCount) {
-            alert('Please enter both URL and target count');
+        if (startUrls.length === 0 || !targetCount) {
+            alert('Please enter at least one URL and a target count');
             return;
         }
-        
-        console.log('Starting discovery for:', startUrl, 'target:', targetCount);
-        
-        try {
-            const response = await fetch('/discover', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: startUrl, count: parseInt(targetCount) }),
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const result = await response.json();
-            console.log('Discovery started, task_id:', result.task_id);
-            
-            currentDiscoveryTaskId = result.task_id;
-            stopDiscoveryBtn.style.display = 'inline-block';
-            pollStatus(result.task_id, discoverProgress, 'discovery');
-        } catch (error) {
-            console.error('Error starting discovery:', error);
-            alert('Failed to start discovery: ' + error.message);
-        }
+
+        const response = await fetch('/discover', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ urls: startUrls, count: parseInt(targetCount) }),
+        });
+        const result = await response.json();
+        discoverProgress.innerHTML = '';
+        result.task_ids.forEach(taskId => {
+            currentDiscoveryTaskIds.push(taskId);
+            const progressElement = document.createElement('div');
+            progressElement.id = `task-${taskId}`;
+            discoverProgress.appendChild(progressElement);
+            pollStatus(taskId, progressElement, 'discovery');
+        });
+        stopDiscoveryBtn.style.display = 'inline-block';
     });
 
     // Load domains
@@ -105,7 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Render URLs
     const renderUrls = (urls) => {
         displayedUrls = urls;
-        urlList.innerHTML = urls.map(url => `<div><input type="checkbox" data-url="${url}"> ${url}</div>`).join('');
+        urlList.innerHTML = urls.map((url, index) => `<div><input type="checkbox" id="url-${index}" data-url="${url}"> ${url}</div>`).join('');
         updateSelectedCount();
     };
 
@@ -123,7 +143,12 @@ document.addEventListener('DOMContentLoaded', () => {
     urlList.addEventListener('change', updateSelectedCount);
 
     const setAllCheckboxes = (checked) => {
-        urlList.querySelectorAll('input[type="checkbox"]').forEach(checkbox => checkbox.checked = checked);
+        displayedUrls.forEach((url, index) => {
+            const checkbox = document.getElementById(`url-${index}`);
+            if (checkbox) {
+                checkbox.checked = checked;
+            }
+        });
         updateSelectedCount();
     };
 
@@ -154,34 +179,32 @@ document.addEventListener('DOMContentLoaded', () => {
             })
         });
         const result = await response.json();
-        currentJobsTaskId = result.task_id;
+        jobProgress.innerHTML = '';
+        result.task_ids.forEach(taskId => {
+            currentJobsTaskIds.push(taskId);
+            const progressElement = document.createElement('div');
+            progressElement.id = `task-${taskId}`;
+            jobProgress.appendChild(progressElement);
+            pollStatus(taskId, progressElement, 'jobs');
+        });
         stopJobsBtn.style.display = 'inline-block';
-        pollStatus(result.task_id, jobProgress, 'jobs');
     });
 
     // Stop button event listeners
     stopDiscoveryBtn.addEventListener('click', async () => {
-        if (currentDiscoveryTaskId) {
-            try {
-                await fetch(`/stop/${currentDiscoveryTaskId}`, { method: 'POST' });
-                stopDiscoveryBtn.textContent = 'Stopping...';
-                stopDiscoveryBtn.disabled = true;
-            } catch (error) {
-                console.error('Error stopping discovery:', error);
-            }
-        }
+        currentDiscoveryTaskIds.forEach(async (taskId) => {
+            await fetch(`/stop/${taskId}`, { method: 'POST' });
+        });
+        stopDiscoveryBtn.textContent = 'Stopping...';
+        stopDiscoveryBtn.disabled = true;
     });
 
     stopJobsBtn.addEventListener('click', async () => {
-        if (currentJobsTaskId) {
-            try {
-                await fetch(`/stop/${currentJobsTaskId}`, { method: 'POST' });
-                stopJobsBtn.textContent = 'Stopping...';
-                stopJobsBtn.disabled = true;
-            } catch (error) {
-                console.error('Error stopping jobs:', error);
-            }
-        }
+        currentJobsTaskIds.forEach(async (taskId) => {
+            await fetch(`/stop/${taskId}`, { method: 'POST' });
+        });
+        stopJobsBtn.textContent = 'Stopping...';
+        stopJobsBtn.disabled = true;
     });
 
     // Initial load
