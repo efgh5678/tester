@@ -89,6 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const startUrls = document.getElementById('start-urls').value.split('\n').filter(url => url.trim() !== '');
         const targetCount = document.getElementById('target-count').value;
+        const urlRegex = document.getElementById('url-regex').value;
         if (startUrls.length === 0 || !targetCount) {
             alert('Please enter at least one URL and a target count');
             return;
@@ -97,7 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const response = await fetch('/discover', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ urls: startUrls, count: parseInt(targetCount) }),
+            body: JSON.stringify({ urls: startUrls, count: parseInt(targetCount), regex: urlRegex }),
         });
         const result = await response.json();
         discoverProgress.innerHTML = '';
