@@ -1,6 +1,7 @@
 import requests
 import time
 import sqlite3
+import re
 from urllib.parse import urlparse
 
 def get_domain_from_url(url):
@@ -12,7 +13,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def discover_urls(start_url, target_count, username, password, task_id, task_status, task_lock):
+def discover_urls(start_url, target_count, username, password, task_id, task_status, task_lock, url_regex=None):
     """
     Discovers URLs from a given starting URL up to a target count.
     Updates the task_status dictionary with the progress and persists state in the DB.
@@ -22,6 +23,16 @@ def discover_urls(start_url, target_count, username, password, task_id, task_sta
         start_url = f"https://{start_url}"
 
     target_domain = get_domain_from_url(start_url)
+
+    compiled_regex = []
+    if url_regex:
+        try:
+            compiled_regex = [re.compile(pattern) for pattern in url_regex.splitlines() if pattern]
+        except re.error as e:
+            logging.error(f"Invalid regex pattern: {e}")
+            # Decide how to handle this - fail the task or proceed without regex?
+            # For now, let's proceed without regex filtering on error.
+            compiled_regex = []
 
     conn = sqlite3.connect('database.db')
     c = conn.cursor()
@@ -114,6 +125,11 @@ def discover_urls(start_url, target_count, username, password, task_id, task_sta
                                     continue
                                 # Filter by target domain (allow subdomains)
                                 if get_domain_from_url(absolute_url).endswith(target_domain):
+                                    # If regex patterns are provided, check if the URL matches any of them
+                                    if compiled_regex:
+                                        if not any(p.match(absolute_url) for p in compiled_regex):
+                                            continue  # Skip if no regex matches
+
                                     c.execute("INSERT OR IGNORE INTO urls (domain_id, starting_url, url) VALUES (?, ?, ?)", (domain_id, url, absolute_url))
                                     if c.rowcount > 0:
                                         new_urls_found += 1

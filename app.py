@@ -43,6 +43,7 @@ def discover():
     data = request.get_json()
     start_urls = data.get('urls')
     target_count = data.get('count')
+    url_regex = data.get('regex')
 
     if not start_urls or not target_count:
         return jsonify({'error': 'Missing urls or count'}), 400
@@ -59,9 +60,9 @@ def discover():
             }
         task_ids.append(task_id)
 
-        def run_discovery(start_url, task_id):
+        def run_discovery(start_url, task_id, url_regex):
             try:
-                discover_urls(start_url, target_count, OXYLABS_USERNAME, OXYLABS_PASSWORD, task_id, task_status, task_lock)
+                discover_urls(start_url, target_count, OXYLABS_USERNAME, OXYLABS_PASSWORD, task_id, task_status, task_lock, url_regex)
             except Exception as e:
                 with task_lock:
                     task_status[task_id]['status'] = 'failed'
@@ -71,7 +72,7 @@ def discover():
                     if task_id in running_threads:
                         del running_threads[task_id]
 
-        thread = threading.Thread(target=run_discovery, args=(start_url, task_id))
+        thread = threading.Thread(target=run_discovery, args=(start_url, task_id, url_regex))
         with thread_lock:
             running_threads[task_id] = thread
         thread.start()
