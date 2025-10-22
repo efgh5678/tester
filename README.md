@@ -27,11 +27,15 @@ Before you begin, ensure you have the following installed:
     pip install -r requirements.txt
     ```
 
-4.  **Set the environment variables:**
-    You need to provide your Oxylabs API credentials as environment variables.
+4.  **Set up your Oxylabs credentials:**
+    Copy the example environment file and add your credentials:
     ```bash
-    export OXYLABS_USERNAME='your_username'
-    export OXYLABS_PASSWORD='your_password'
+    cp .env.example .env
+    ```
+    Then edit the `.env` file and replace the placeholder values with your actual Oxylabs API credentials:
+    ```
+    OXYLABS_USERNAME=your_actual_username
+    OXYLABS_PASSWORD=your_actual_password
     ```
 
 5.  **Initialize the database:**
@@ -54,6 +58,7 @@ Before you begin, ensure you have the following installed:
     -   Enter a domain name or a full starting URL (e.g., `example.com`).
     -   Enter the target number of URLs you want to discover.
     -   Click "Discover URLs". The application will start discovering URLs in the background. You will see a progress indicator update in real-time.
+    -   You can stop the discovery process at any time by clicking the red "Stop Discovery" button.
 
 4.  **Step 2: Select URLs**
     -   Once the URL discovery is complete, the discovered domain will appear in the dropdown menu.
@@ -66,3 +71,4 @@ Before you begin, ensure you have the following installed:
     -   Set the desired rate limit in jobs per second.
     -   Optionally, add any custom JSON parameters to be included in each job payload.
     -   Click "Create Jobs". The application will start creating the jobs in the background, and you will see a progress indicator.
+    -   You can stop the job creation process at any time by clicking the red "Stop Jobs" button.

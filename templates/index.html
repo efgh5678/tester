@@ -17,6 +17,7 @@
                 <input type="text" id="start-url" placeholder="Enter domain or starting URL" required>
                 <input type="number" id="target-count" placeholder="Target URL count" required>
                 <button type="submit">Discover URLs</button>
+                <button type="button" id="stop-discovery" style="display: none; background-color: #dc3545; color: white;">Stop Discovery</button>
             </form>
             <div id="discover-progress"></div>
         </div>
@@ -44,6 +45,7 @@
                 <input type="number" id="rate-limit" placeholder="Jobs per second" value="10">
                 <textarea id="custom-params" placeholder="Enter custom JSON parameters"></textarea>
                 <button type="submit">Create Jobs</button>
+                <button type="button" id="stop-jobs" style="display: none; background-color: #dc3545; color: white;">Stop Jobs</button>
             </form>
             <div id="job-progress"></div>
         </div>

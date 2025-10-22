@@ -34,6 +34,12 @@ def discover_urls(start_url, target_count, username, password, task_id, task_sta
         conn.commit()
 
         while True:
+            # Check if task was stopped
+            with task_lock:
+                if task_status[task_id]['status'] == 'stopped':
+                    c.execute("UPDATE domains SET discovery_status = 'stopped' WHERE id = ?", (domain_id,))
+                    return
+            
             c.execute("SELECT COUNT(id) FROM urls WHERE domain_id = ?", (domain_id,))
             discovered_count = c.fetchone()[0]
             with task_lock:
@@ -44,13 +50,20 @@ def discover_urls(start_url, target_count, username, password, task_id, task_sta
             if discovered_count >= current_target:
                 break
 
-            c.execute("SELECT url FROM urls WHERE domain_id = ? AND has_been_used_to_find_more_urls = 0 LIMIT 10", (domain_id,))
+            # Process up to 50 URLs per loop to increase crawl breadth
+            c.execute("SELECT url FROM urls WHERE domain_id = ? AND has_been_used_to_find_more_urls = 0 LIMIT 50", (domain_id,))
             urls_to_process = [row[0] for row in c.fetchall()]
 
             if not urls_to_process:
                 break
 
             for url in urls_to_process:
+                # Check if task was stopped before processing each URL
+                with task_lock:
+                    if task_status[task_id]['status'] == 'stopped':
+                        c.execute("UPDATE domains SET discovery_status = 'stopped' WHERE id = ?", (domain_id,))
+                        return
+                
                 print(f"Processing {url}...")
                 payload = {"url": url, "parse": True, "parser_preset": "link_parser"}
                 try:
@@ -59,20 +72,50 @@ def discover_urls(start_url, target_count, username, password, task_id, task_sta
                     result_pages = [link['href_list'] for link in response.json()['_links'] if link['rel'] == 'results-content-parsed'][0]
 
                     for page_url in result_pages:
+                        # Oxylabs links may be returned as http; enforce https for auth endpoints
+                        if page_url.startswith('http://data.oxylabs.io'):
+                            page_url = page_url.replace('http://', 'https://', 1)
                         time.sleep(5)
                         backoff_time = 1
                         while True:
-                            results_response = requests.get(page_url)
+                            # Poll Oxylabs results endpoint (requires auth and https)
+                            results_response = requests.get(page_url, auth=(username, password))
                             if results_response.status_code == 200:
                                 break
                             time.sleep(backoff_time)
                             backoff_time *= 2
 
-                        for result in results_response.json():
-                            for link in result.get('links', []):
-                                discovered_url = link.get('url')
-                                if discovered_url and get_domain_from_url(discovered_url).endswith(target_domain):
-                                    c.execute("INSERT OR IGNORE INTO urls (domain_id, starting_url, url) VALUES (?, ?, ?)", (domain_id, url, discovered_url))
+                        results_json = results_response.json()
+
+                        # Helper to process a list of links
+                        def process_links(links_list):
+                            for link in links_list:
+                                # Normalize link to a string URL
+                                if isinstance(link, str):
+                                    candidate_url = link
+                                else:
+                                    candidate_url = link.get('url') if isinstance(link, dict) else str(link)
+                                if not candidate_url:
+                                    continue
+                                # Resolve relative URLs against the current page URL
+                                from urllib.parse import urljoin, urlparse
+                                absolute_url = urljoin(url, candidate_url)
+                                # Skip non-http(s) schemes like mailto:, javascript:, etc.
+                                parsed = urlparse(absolute_url)
+                                if parsed.scheme not in ('http', 'https'):
+                                    continue
+                                # Filter by target domain (allow subdomains)
+                                if get_domain_from_url(absolute_url).endswith(target_domain):
+                                    c.execute("INSERT OR IGNORE INTO urls (domain_id, starting_url, url) VALUES (?, ?, ?)", (domain_id, url, absolute_url))
+
+                        # Shape A: content links returned directly at top level
+                        if isinstance(results_json, dict) and 'links' in results_json:
+                            process_links(results_json.get('links', []))
+                        else:
+                            # Shape B: envelope with results[] each containing content.links
+                            for result in results_json.get('results', []):
+                                content = result.get('content', {})
+                                process_links(content.get('links', []))
 
                     c.execute("UPDATE urls SET has_been_used_to_find_more_urls = 1 WHERE url = ?", (url,))
                     conn.commit()

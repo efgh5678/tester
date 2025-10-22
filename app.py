@@ -6,7 +6,11 @@ import requests
 import json
 import time
 from flask import Flask, render_template, request, jsonify
+from dotenv import load_dotenv
 from url_discovery import discover_urls
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -15,11 +19,14 @@ OXYLABS_USERNAME = os.environ.get('OXYLABS_USERNAME')
 OXYLABS_PASSWORD = os.environ.get('OXYLABS_PASSWORD')
 
 if not OXYLABS_USERNAME or not OXYLABS_PASSWORD:
-    raise ValueError("OXYLABS_USERNAME and OXYLABS_PASSWORD environment variables must be set")
+    raise ValueError("OXYLABS_USERNAME and OXYLABS_PASSWORD must be set in .env file")
 
 # In-memory store for task progress
 task_status = {}
 task_lock = threading.Lock()
+# Store for running threads to allow stopping
+running_threads = {}
+thread_lock = threading.Lock()
 
 @app.route('/')
 def index():
@@ -45,8 +52,15 @@ def discover():
             with task_lock:
                 task_status[task_id]['status'] = 'failed'
                 task_status[task_id]['error'] = str(e)
+        finally:
+            # Clean up thread reference when done
+            with thread_lock:
+                if task_id in running_threads:
+                    del running_threads[task_id]
 
     thread = threading.Thread(target=run_discovery)
+    with thread_lock:
+        running_threads[task_id] = thread
     thread.start()
 
     return jsonify({'task_id': task_id})
@@ -115,6 +129,11 @@ def create_jobs():
         urls_to_process = urls
 
         while successful_creations < target_count and urls_to_process:
+            # Check if task was stopped
+            with task_lock:
+                if task_status[task_id]['status'] == 'stopped':
+                    return
+            
             remaining_target = target_count - successful_creations
             current_batch_size = min(100, remaining_target, len(urls_to_process))
 
@@ -144,12 +163,39 @@ def create_jobs():
             time.sleep(interval)
 
         with task_lock:
-            task_status[task_id]['status'] = 'completed'
+            if task_status[task_id]['status'] != 'stopped':
+                task_status[task_id]['status'] = 'completed'
+        # Clean up thread reference when done
+        with thread_lock:
+            if task_id in running_threads:
+                del running_threads[task_id]
 
     thread = threading.Thread(target=run_job_creation)
+    with thread_lock:
+        running_threads[task_id] = thread
     thread.start()
 
     return jsonify({'task_id': task_id})
+
+@app.route('/stop/<task_id>', methods=['POST'])
+def stop_task(task_id):
+    """Stop a running task"""
+    with task_lock:
+        if task_id not in task_status:
+            return jsonify({'error': 'Task not found'}), 404
+        
+        if task_status[task_id]['status'] in ['completed', 'failed', 'stopped']:
+            return jsonify({'error': 'Task is not running'}), 400
+        
+        task_status[task_id]['status'] = 'stopped'
+    
+    with thread_lock:
+        if task_id in running_threads:
+            # Note: We can't forcefully stop Python threads, but we've marked the task as stopped
+            # The thread will check this status and exit gracefully
+            pass
+    
+    return jsonify({'message': 'Task stop requested'})
 
 if __name__ == '__main__':
     app.run(debug=True)
