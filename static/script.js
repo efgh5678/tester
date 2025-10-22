@@ -14,6 +14,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const jobProgress = document.getElementById('job-progress');
     const stopDiscoveryBtn = document.getElementById('stop-discovery');
     const stopJobsBtn = document.getElementById('stop-jobs');
+    const refreshLogsBtn = document.getElementById('refresh-logs-btn');
+    const discoveryLogs = document.getElementById('discovery-logs');
+    const viewToggleCheckbox = document.getElementById('view-toggle-checkbox');
+    const viewToggleLabel = document.getElementById('view-toggle-label');
 
     // Debug: Check if elements are found
     console.log('Elements found:', {
@@ -270,6 +274,45 @@ document.addEventListener('DOMContentLoaded', () => {
         stopJobsBtn.disabled = true;
     });
 
+    // Load discovery logs
+    const loadDiscoveryLogs = async () => {
+        const response = await fetch('/discovery-logs');
+        const logs = await response.json();
+        discoveryLogs.innerHTML = logs.map(log => `
+            <div class="log-entry">
+                <span class="timestamp">${log.timestamp}</span>
+                <span class="domain">${log.domain}</span>
+                <span class="error">${log.error}</span>
+            </div>
+        `).join('');
+    };
+
+    // Event listener for the refresh logs button
+    refreshLogsBtn.addEventListener('click', loadDiscoveryLogs);
+
+    // View toggle logic
+    viewToggleCheckbox.addEventListener('change', () => {
+        if (viewToggleCheckbox.checked) {
+            viewToggleLabel.textContent = 'Global View';
+            loadUrls('all');
+        } else {
+            viewToggleLabel.textContent = 'Actual View';
+            if (currentDiscoveryTaskIds.length > 0) {
+                loadUrlsForSession(currentDiscoveryTaskIds[currentDiscoveryTaskIds.length - 1]);
+            } else {
+                urlList.innerHTML = '<div>No active discovery session.</div>';
+            }
+        }
+    });
+
+    const loadUrlsForSession = async (taskId) => {
+        const response = await fetch(`/urls/session/${taskId}`);
+        const urls = await response.json();
+        currentUrls = [...new Set(urls)];
+        renderUrls(currentUrls);
+    };
+
     // Initial load
     loadDomains();
+    loadDiscoveryLogs();
 });

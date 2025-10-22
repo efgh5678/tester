@@ -26,6 +26,16 @@ def init_db():
         )
     ''')
 
+    # Create discovery_logs table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS discovery_logs (
+            id INTEGER PRIMARY KEY,
+            domain_name TEXT NOT NULL,
+            error_message TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     conn.commit()
     conn.close()
 
