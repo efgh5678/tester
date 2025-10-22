@@ -94,6 +94,8 @@ def discover_urls(start_url, target_count, username, password, task_id, task_sta
 
                         # Helper to process a list of links
                         def process_links(links_list):
+                            if not links_list:
+                                return
                             new_urls_found = 0
                             for link in links_list:
                                 # Normalize link to a string URL
@@ -122,9 +124,11 @@ def discover_urls(start_url, target_count, username, password, task_id, task_sta
                             process_links(results_json.get('links', []))
                         else:
                             # Shape B: envelope with results[] each containing content.links
-                            for result in results_json.get('results', []):
-                                content = result.get('content', {})
-                                process_links(content.get('links', []))
+                            results = results_json.get('results', [])
+                            if results:
+                                for result in results:
+                                    content = result.get('content', {})
+                                    process_links(content.get('links', []))
 
                     c.execute("UPDATE urls SET has_been_used_to_find_more_urls = 1 WHERE url = ?", (url,))
                     conn.commit()

@@ -175,7 +175,8 @@ document.addEventListener('DOMContentLoaded', () => {
     urlList.addEventListener('change', updateSelectedCount);
 
     const setAllCheckboxes = (checked) => {
-        urlList.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+        const checkboxes = urlList.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(checkbox => {
             checkbox.checked = checked;
         });
         updateSelectedCount();
@@ -189,13 +190,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // Bulk Job Creation
     createJobsForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        console.log('Create jobs form submitted');
         try {
             const selectedUrls = Array.from(urlList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.dataset.url);
+            console.log('Selected URLs:', selectedUrls);
             if (selectedUrls.length === 0) {
                 alert('Please select at least one URL.');
                 return;
             }
             const targetCount = document.getElementById('job-target-count').value;
+            console.log('Target count:', targetCount);
             const rateLimit = document.getElementById('rate-limit').value;
             const customParams = document.getElementById('custom-params').value;
             const response = await fetch('/create-jobs', {
@@ -209,6 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
             });
             const result = await response.json();
+            console.log('Create jobs response:', result);
             jobProgress.innerHTML = '';
             result.task_ids.forEach(taskId => {
                 currentJobsTaskIds.push(taskId);
