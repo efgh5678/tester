@@ -109,8 +109,42 @@ def get_urls(domain):
     conn.close()
     return jsonify(urls)
 
+@app.route('/urls/session/<task_id>', methods=['GET'])
+def get_session_urls(task_id):
+    with task_lock:
+        task = task_status.get(task_id)
+        if not task:
+            return jsonify({'error': 'Task not found'}), 404
+        start_url = task.get('url')
+
+    if not start_url:
+        return jsonify({'error': 'Task has no associated start URL'}), 400
+
+    domain = get_domain_from_url(start_url)
+    conn = sqlite3.connect('database.db')
+    c = conn.cursor()
+    c.execute("SELECT id FROM domains WHERE domain_name = ?", (domain,))
+    domain_id = c.fetchone()
+    if not domain_id:
+        return jsonify({'error': 'Domain not found'}), 404
+
+    c.execute("SELECT url FROM urls WHERE domain_id = ? AND starting_url = ?", (domain_id[0], start_url))
+    urls = [row[0] for row in c.fetchall()]
+    conn.close()
+    return jsonify(urls)
+
+@app.route('/discovery-logs', methods=['GET'])
+def get_discovery_logs():
+    conn = sqlite3.connect('database.db')
+    c = conn.cursor()
+    c.execute("SELECT domain_name, error_message, timestamp FROM discovery_logs ORDER BY timestamp DESC")
+    logs = [{'domain': row[0], 'error': row[1], 'timestamp': row[2]} for row in c.fetchall()]
+    conn.close()
+    return jsonify(logs)
+
 
 import logging
+import random
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -127,8 +161,13 @@ def create_jobs():
     if not urls or not target_count:
         return jsonify({'error': 'Missing urls or target_count'}), 400
 
+    if target_count > len(urls):
+        urls_to_process = random.choices(urls, k=target_count)
+    else:
+        urls_to_process = urls
+
     urls_by_domain = {}
-    for url in urls:
+    for url in urls_to_process:
         domain = get_domain_from_url(url)
         if domain not in urls_by_domain:
             urls_by_domain[domain] = []
@@ -141,7 +180,7 @@ def create_jobs():
             task_status[task_id] = {
                 'status': 'pending',
                 'progress': 0,
-                'total': min(target_count, len(domain_urls)),
+                'total': len(domain_urls),
                 'domain': domain
             }
         task_ids.append(task_id)
@@ -159,16 +198,15 @@ def create_jobs():
             payload = {"url": []}
             payload.update(custom_params)
             successful_creations = 0
-            urls_to_process = domain_urls
 
-            while successful_creations < target_count and successful_creations < len(urls_to_process):
+            while successful_creations < len(domain_urls):
                 with task_lock:
                     if task_status[task_id]['status'] == 'stopped':
                         return
 
-                remaining_target = len(urls_to_process) - successful_creations
+                remaining_target = len(domain_urls) - successful_creations
                 current_batch_size = min(100, remaining_target)
-                batch_urls = urls_to_process[successful_creations:successful_creations + current_batch_size]
+                batch_urls = domain_urls[successful_creations:successful_creations + current_batch_size]
                 payload['url'] = batch_urls
                 interval = len(batch_urls) / rate_limit if rate_limit > 0 else 0
 

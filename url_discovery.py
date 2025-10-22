@@ -134,7 +134,10 @@ def discover_urls(start_url, target_count, username, password, task_id, task_sta
                     conn.commit()
 
                 except requests.exceptions.RequestException as e:
-                    print(f"Error processing {url}: {e}")
+                    error_message = f"Error processing {url}: {e}"
+                    print(error_message)
+                    c.execute("INSERT INTO discovery_logs (domain_name, error_message) VALUES (?, ?)", (target_domain, error_message))
+                    conn.commit()
                     with task_lock:
                         task_status[task_id]['status'] = 'failed'
                         task_status[task_id]['error'] = str(e)
@@ -148,7 +151,10 @@ def discover_urls(start_url, target_count, username, password, task_id, task_sta
         logging.info(f"URL discovery complete for {start_url}.")
 
     except Exception as e:
-        print(f"A critical error occurred during discovery for {target_domain}: {e}")
+        error_message = f"A critical error occurred during discovery for {target_domain}: {e}"
+        print(error_message)
+        c.execute("INSERT INTO discovery_logs (domain_name, error_message) VALUES (?, ?)", (target_domain, error_message))
+        conn.commit()
         if domain_id:
             c.execute("UPDATE domains SET discovery_status = 'failed' WHERE id = ?", (domain_id,))
         raise
