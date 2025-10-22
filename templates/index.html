@@ -14,10 +14,10 @@
         <div class="section">
             <h2>Step 1: Discover URLs</h2>
             <form id="discover-form">
-                <input type="text" id="start-url" placeholder="Enter domain or starting URL" required>
+                <textarea id="start-urls" placeholder="Enter domains or starting URLs, one per line" required></textarea>
                 <input type="number" id="target-count" placeholder="Target URL count" required>
                 <button type="submit">Discover URLs</button>
-                <button type="button" id="stop-discovery" style="display: none; background-color: #dc3545; color: white;">Stop Discovery</button>
+                <button type="button" id="stop-discovery" style="display: none; background-color: #dc3545; color: white;">Stop All Discoveries</button>
             </form>
             <div id="discover-progress"></div>
         </div>
