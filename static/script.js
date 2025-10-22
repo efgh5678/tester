@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectAllBtn = document.getElementById('select-all');
     const unselectAllBtn = document.getElementById('unselect-all');
     const selectedCountEl = document.getElementById('selected-count');
-    const createJobsForm = document.getElementById('create-jobs-form');
+    const createJobsBtn = document.getElementById('create-jobs-btn');
     const jobProgress = document.getElementById('job-progress');
     const stopDiscoveryBtn = document.getElementById('stop-discovery');
     const stopJobsBtn = document.getElementById('stop-jobs');
@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentUrls = [];
     let displayedUrls = [];
+    let selectedUrls = new Set();
     let currentDiscoveryTaskIds = [];
     let currentJobsTaskIds = [];
 
@@ -158,7 +159,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Render URLs
     const renderUrls = (urls) => {
         displayedUrls = urls;
-        urlList.innerHTML = urls.map((url, index) => `<div><input type="checkbox" id="url-${index}" data-url="${url}"> ${url}</div>`).join('');
+        urlList.innerHTML = urls.map((url, index) => {
+            const isChecked = selectedUrls.has(url) ? 'checked' : '';
+            return `<div><input type="checkbox" id="url-${index}" data-url="${url}" ${isChecked}> ${url}</div>`;
+        }).join('');
         updateSelectedCount();
     };
 
@@ -172,33 +176,49 @@ document.addEventListener('DOMContentLoaded', () => {
     sortDescBtn.addEventListener('click', () => renderUrls([...displayedUrls].sort().reverse()));
     selectAllBtn.addEventListener('click', () => setAllCheckboxes(true));
     unselectAllBtn.addEventListener('click', () => setAllCheckboxes(false));
-    urlList.addEventListener('change', updateSelectedCount);
+
+    urlList.addEventListener('change', (e) => {
+        if (e.target.type === 'checkbox') {
+            const url = e.target.dataset.url;
+            if (e.target.checked) {
+                selectedUrls.add(url);
+            } else {
+                selectedUrls.delete(url);
+            }
+            updateSelectedCount();
+        }
+    });
 
     const setAllCheckboxes = (checked) => {
-        const checkboxes = urlList.querySelectorAll('input[type="checkbox"]');
-        checkboxes.forEach(checkbox => {
-            checkbox.checked = checked;
+        displayedUrls.forEach(url => {
+            if (checked) {
+                selectedUrls.add(url);
+            } else {
+                selectedUrls.delete(url);
+            }
         });
-        updateSelectedCount();
+        renderUrls(displayedUrls);
     };
 
     const updateSelectedCount = () => {
-        const selectedCount = urlList.querySelectorAll('input[type="checkbox"]:checked').length;
-        selectedCountEl.textContent = `Selected URLs: ${selectedCount}`;
+        selectedCountEl.textContent = `Selected URLs: ${selectedUrls.size}`;
     };
 
     // Bulk Job Creation
-    createJobsForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        console.log('Create jobs form submitted');
+    createJobsBtn.addEventListener('click', async () => {
+        console.log('Create jobs button clicked');
         try {
-            const selectedUrls = Array.from(urlList.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.dataset.url);
-            console.log('Selected URLs:', selectedUrls);
-            if (selectedUrls.length === 0) {
+            const urlsToCreate = Array.from(selectedUrls);
+            console.log('Selected URLs:', urlsToCreate);
+            if (urlsToCreate.length === 0) {
                 alert('Please select at least one URL.');
                 return;
             }
             const targetCount = document.getElementById('job-target-count').value;
+            if (!targetCount) {
+                alert('Please enter a target job count.');
+                return;
+            }
             console.log('Target count:', targetCount);
             const rateLimit = document.getElementById('rate-limit').value;
             const customParams = document.getElementById('custom-params').value;
@@ -206,7 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    urls: selectedUrls,
+                    urls: urlsToCreate,
                     target_count: parseInt(targetCount),
                     rate_limit: parseInt(rateLimit),
                     custom_params: customParams
@@ -219,11 +239,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 result.task_ids.forEach(taskId => {
                     currentJobsTaskIds.push(taskId);
                     const progressElement = document.createElement('div');
-                progressElement.id = `task-${taskId}`;
-                jobProgress.appendChild(progressElement);
-                pollStatus(taskId, progressElement, 'jobs');
-            });
-            stopJobsBtn.style.display = 'inline-block';
+                    progressElement.id = `task-${taskId}`;
+                    jobProgress.appendChild(progressElement);
+                    pollStatus(taskId, progressElement, 'jobs');
+                });
+                stopJobsBtn.style.display = 'inline-block';
             } else {
                 alert('Error creating jobs: ' + (result.error || 'Unknown error'));
             }
