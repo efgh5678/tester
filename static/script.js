@@ -214,15 +214,19 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const result = await response.json();
             console.log('Create jobs response:', result);
-            jobProgress.innerHTML = '';
-            result.task_ids.forEach(taskId => {
-                currentJobsTaskIds.push(taskId);
-                const progressElement = document.createElement('div');
+            if (result.task_ids) {
+                jobProgress.innerHTML = '';
+                result.task_ids.forEach(taskId => {
+                    currentJobsTaskIds.push(taskId);
+                    const progressElement = document.createElement('div');
                 progressElement.id = `task-${taskId}`;
                 jobProgress.appendChild(progressElement);
                 pollStatus(taskId, progressElement, 'jobs');
             });
             stopJobsBtn.style.display = 'inline-block';
+            } else {
+                alert('Error creating jobs: ' + (result.error || 'Unknown error'));
+            }
         } catch (error) {
             console.error('Error creating jobs:', error);
             alert('Failed to create jobs: ' + error.message);
