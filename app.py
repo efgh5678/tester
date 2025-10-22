@@ -110,10 +110,16 @@ def get_urls(domain):
     return jsonify(urls)
 
 
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 @app.route('/create-jobs', methods=['POST'])
 def create_jobs():
+    logging.info("Received request to create jobs")
     data = request.get_json()
     urls = data.get('urls')
+    logging.info(f"Processing {len(urls)} URLs")
     target_count = data.get('target_count')
     rate_limit = data.get('rate_limit', 10)
     custom_params_str = data.get('custom_params', '{}')
@@ -141,6 +147,7 @@ def create_jobs():
         task_ids.append(task_id)
 
         def run_job_creation(domain_urls, task_id):
+            logging.info(f"Starting job creation for domain {domain} with {len(domain_urls)} URLs")
             try:
                 custom_params = json.loads(custom_params_str) if custom_params_str else {}
             except json.JSONDecodeError:
@@ -152,9 +159,9 @@ def create_jobs():
             payload = {"url": []}
             payload.update(custom_params)
             successful_creations = 0
-            urls_to_process = domain_urls[:target_count]
+            urls_to_process = domain_urls
 
-            while successful_creations < len(urls_to_process):
+            while successful_creations < target_count and successful_creations < len(urls_to_process):
                 with task_lock:
                     if task_status[task_id]['status'] == 'stopped':
                         return
@@ -186,6 +193,7 @@ def create_jobs():
             with task_lock:
                 if task_status[task_id]['status'] != 'stopped':
                     task_status[task_id]['status'] = 'completed'
+            logging.info(f"Job creation complete for domain {domain}")
             with thread_lock:
                 if task_id in running_threads:
                     del running_threads[task_id]
