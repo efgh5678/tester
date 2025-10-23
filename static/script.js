@@ -18,6 +18,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const discoveryLogs = document.getElementById('discovery-logs');
     const viewToggleCheckbox = document.getElementById('view-toggle-checkbox');
     const viewToggleLabel = document.getElementById('view-toggle-label');
+    const exportSelectedBtn = document.getElementById('export-selected');
+    const exportDomainBtn = document.getElementById('export-domain');
 
     // Debug: Check if elements are found
     console.log('Elements found:', {
@@ -316,4 +318,56 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initial load
     loadDomains();
     loadDiscoveryLogs();
+
+    // Helper function to download content to a file
+    const downloadToFile = (content, filename, contentType) => {
+        const a = document.createElement('a');
+        const file = new Blob([content], { type: contentType });
+        a.href = URL.createObjectURL(file);
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    };
+
+    // Event listener for exporting selected URLs
+    exportSelectedBtn.addEventListener('click', () => {
+        const urlsToExport = Array.from(selectedUrls);
+        if (urlsToExport.length === 0) {
+            alert('No URLs selected for export.');
+            return;
+        }
+        const fileContent = urlsToExport.join('\n');
+        downloadToFile(fileContent, 'selected_urls.txt', 'text/plain');
+    });
+
+    // Event listener for exporting domain URLs
+    exportDomainBtn.addEventListener('click', async () => {
+        const selectedDomainInput = domainList.querySelector('input[name="domain"]:checked');
+        if (!selectedDomainInput) {
+            alert('Please select a domain.');
+            return;
+        }
+        const domain = selectedDomainInput.value;
+        let urlsToExport = [];
+        if (domain === 'all') {
+            const response = await fetch('/domains');
+            const domains = await response.json();
+            for (const d of domains) {
+                const urlsResponse = await fetch(`/urls/${d}`);
+                const urls = await urlsResponse.json();
+                urlsToExport = urlsToExport.concat(urls);
+            }
+            urlsToExport = [...new Set(urlsToExport)];
+        } else {
+            const response = await fetch(`/urls/${domain}`);
+            urlsToExport = await response.json();
+        }
+
+        if (urlsToExport.length === 0) {
+            alert('No URLs found for the selected domain.');
+            return;
+        }
+        const fileContent = urlsToExport.join('\n');
+        downloadToFile(fileContent, `${domain}_urls.txt`, 'text/plain');
+    });
 });
