@@ -72,7 +72,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (currentDiscoveryTaskIds.length === 0) {
                         stopDiscoveryBtn.style.display = 'none';
                     }
+                    // When discovery is done, reload domains and URLs
                     loadDomains();
+                    const selectedDomain = document.querySelector('input[name="domain"]:checked').value;
+                    loadUrls(selectedDomain);
                 } else if (taskType === 'jobs') {
                     const index = currentJobsTaskIds.indexOf(taskId);
                     if (index > -1) {
@@ -112,6 +115,11 @@ document.addEventListener('DOMContentLoaded', () => {
             pollStatus(taskId, progressElement, 'discovery');
         });
         stopDiscoveryBtn.style.display = 'inline-block';
+
+        if (result.session_id) {
+            // Use history.pushState to change the URL without a full page reload
+            history.pushState({sessionId: result.session_id}, `Session ${result.session_id}`, `/${result.session_id}`);
+        }
     });
 
     // Load domains
@@ -144,19 +152,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Load URLs for a domain
     const loadUrls = async (domain) => {
+        const sessionId = window.location.pathname.split('/')[1];
+        let url = `/urls/${domain}`;
+        if (sessionId) {
+            url += `?session_id=${sessionId}`;
+        }
+
         if (domain === 'all') {
             const response = await fetch('/domains');
             const domains = await response.json();
             let allUrls = [];
             for (const d of domains) {
-                const urlsResponse = await fetch(`/urls/${d}`);
+                let domainUrl = `/urls/${d}`;
+                if (sessionId) {
+                    domainUrl += `?session_id=${sessionId}`;
+                }
+                const urlsResponse = await fetch(domainUrl);
                 const urls = await urlsResponse.json();
                 allUrls = allUrls.concat(urls);
             }
             currentUrls = [...new Set(allUrls)];
             renderUrls(currentUrls);
         } else {
-            const response = await fetch(`/urls/${domain}`);
+            const response = await fetch(url);
             const urls = await response.json();
             currentUrls = [...new Set(urls)];
             renderUrls(currentUrls);
@@ -295,21 +313,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // View toggle logic
     viewToggleCheckbox.addEventListener('change', () => {
+        const sessionId = window.location.pathname.split('/')[1];
         if (viewToggleCheckbox.checked) {
             viewToggleLabel.textContent = 'Global View';
             loadUrls('all');
         } else {
             viewToggleLabel.textContent = 'Actual View';
-            if (currentDiscoveryTaskIds.length > 0) {
-                loadUrlsForSession(currentDiscoveryTaskIds[currentDiscoveryTaskIds.length - 1]);
+            if (sessionId) {
+                loadUrlsForSession(sessionId);
             } else {
                 urlList.innerHTML = '<div>No active discovery session.</div>';
             }
         }
     });
 
-    const loadUrlsForSession = async (taskId) => {
-        const response = await fetch(`/urls/session/${taskId}`);
+    const loadUrlsForSession = async (sessionId) => {
+        const response = await fetch(`/urls/session/${sessionId}`);
         const urls = await response.json();
         currentUrls = [...new Set(urls)];
         renderUrls(currentUrls);

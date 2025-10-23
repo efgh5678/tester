@@ -13,7 +13,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def discover_urls(start_url, target_count, username, password, task_id, task_status, task_lock, url_regex=None):
+def discover_urls(start_url, target_count, username, password, task_id, task_status, task_lock, url_regex=None, session_id=None):
     """
     Discovers URLs from a given starting URL up to a target count.
     Updates the task_status dictionary with the progress and persists state in the DB.
@@ -46,7 +46,7 @@ def discover_urls(start_url, target_count, username, password, task_id, task_sta
         domain_id = c.fetchone()[0]
 
         # Add starting url if it's not there
-        c.execute("INSERT OR IGNORE INTO urls (domain_id, starting_url, url) VALUES (?, ?, ?)", (domain_id, start_url, start_url))
+        c.execute("INSERT OR IGNORE INTO urls (domain_id, starting_url, url, session_id) VALUES (?, ?, ?, ?)", (domain_id, start_url, start_url, session_id))
         conn.commit()
 
         while True:
@@ -130,7 +130,7 @@ def discover_urls(start_url, target_count, username, password, task_id, task_sta
                                         if not any(p.match(absolute_url) for p in compiled_regex):
                                             continue  # Skip if no regex matches
 
-                                    c.execute("INSERT OR IGNORE INTO urls (domain_id, starting_url, url) VALUES (?, ?, ?)", (domain_id, url, absolute_url))
+                                    c.execute("INSERT OR IGNORE INTO urls (domain_id, starting_url, url, session_id) VALUES (?, ?, ?, ?)", (domain_id, url, absolute_url, session_id))
                                     if c.rowcount > 0:
                                         new_urls_found += 1
                             logging.info(f"Found {new_urls_found} new URLs from {url}")

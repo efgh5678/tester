@@ -35,8 +35,9 @@ running_threads = {}
 thread_lock = threading.Lock()
 
 @app.route('/')
-def index():
-    return render_template('index.html')
+@app.route('/<session_id>')
+def index(session_id=None):
+    return render_template('index.html', session_id=session_id)
 
 @app.route('/discover', methods=['POST'])
 def discover():
@@ -48,6 +49,13 @@ def discover():
     if not start_urls or not target_count:
         return jsonify({'error': 'Missing urls or count'}), 400
 
+    session_id = str(uuid.uuid4())
+    conn = sqlite3.connect('database.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO discovery_sessions (id) VALUES (?)", (session_id,))
+    conn.commit()
+    conn.close()
+
     task_ids = []
     for start_url in start_urls:
         task_id = str(uuid.uuid4())
@@ -56,13 +64,14 @@ def discover():
                 'status': 'pending',
                 'progress': 0,
                 'total': target_count,
-                'url': start_url
+                'url': start_url,
+                'session_id': session_id
             }
         task_ids.append(task_id)
 
-        def run_discovery(start_url, task_id, url_regex):
+        def run_discovery(start_url, task_id, url_regex, session_id):
             try:
-                discover_urls(start_url, target_count, OXYLABS_USERNAME, OXYLABS_PASSWORD, task_id, task_status, task_lock, url_regex)
+                discover_urls(start_url, target_count, OXYLABS_USERNAME, OXYLABS_PASSWORD, task_id, task_status, task_lock, url_regex, session_id)
             except Exception as e:
                 with task_lock:
                     task_status[task_id]['status'] = 'failed'
@@ -72,12 +81,12 @@ def discover():
                     if task_id in running_threads:
                         del running_threads[task_id]
 
-        thread = threading.Thread(target=run_discovery, args=(start_url, task_id, url_regex))
+        thread = threading.Thread(target=run_discovery, args=(start_url, task_id, url_regex, session_id))
         with thread_lock:
             running_threads[task_id] = thread
         thread.start()
 
-    return jsonify({'task_ids': task_ids})
+    return jsonify({'task_ids': task_ids, 'session_id': session_id})
 
 @app.route('/status/<task_id>', methods=['GET'])
 def get_status(task_id):
@@ -98,6 +107,7 @@ def get_domains():
 
 @app.route('/urls/<domain>', methods=['GET'])
 def get_urls(domain):
+    session_id = request.args.get('session_id')
     conn = sqlite3.connect('database.db')
     c = conn.cursor()
     c.execute("SELECT id FROM domains WHERE domain_name = ?", (domain,))
@@ -105,31 +115,22 @@ def get_urls(domain):
     if not domain_id:
         return jsonify({'error': 'Domain not found'}), 404
 
-    c.execute("SELECT url FROM urls WHERE domain_id = ?", (domain_id[0],))
+    domain_id = domain_id[0]
+
+    if session_id:
+        c.execute("SELECT url FROM urls WHERE domain_id = ? AND session_id = ?", (domain_id, session_id))
+    else:
+        c.execute("SELECT url FROM urls WHERE domain_id = ?", (domain_id,))
+
     urls = [row[0] for row in c.fetchall()]
     conn.close()
     return jsonify(urls)
 
-@app.route('/urls/session/<task_id>', methods=['GET'])
-def get_session_urls(task_id):
-    with task_lock:
-        task = task_status.get(task_id)
-        if not task:
-            return jsonify({'error': 'Task not found'}), 404
-        start_url = task.get('url')
-
-    if not start_url:
-        return jsonify({'error': 'Task has no associated start URL'}), 400
-
-    domain = get_domain_from_url(start_url)
+@app.route('/urls/session/<session_id>', methods=['GET'])
+def get_session_urls(session_id):
     conn = sqlite3.connect('database.db')
     c = conn.cursor()
-    c.execute("SELECT id FROM domains WHERE domain_name = ?", (domain,))
-    domain_id = c.fetchone()
-    if not domain_id:
-        return jsonify({'error': 'Domain not found'}), 404
-
-    c.execute("SELECT url FROM urls WHERE domain_id = ? AND starting_url = ?", (domain_id[0], start_url))
+    c.execute("SELECT url FROM urls WHERE session_id = ?", (session_id,))
     urls = [row[0] for row in c.fetchall()]
     conn.close()
     return jsonify(urls)
