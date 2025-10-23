@@ -14,6 +14,13 @@ def init_db():
         )
     ''')
 
+    # Create discovery_sessions table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS discovery_sessions (
+            id TEXT PRIMARY KEY
+        )
+    ''')
+
     # Create urls table
     c.execute('''
         CREATE TABLE IF NOT EXISTS urls (
@@ -22,7 +29,9 @@ def init_db():
             starting_url TEXT,
             url TEXT UNIQUE NOT NULL,
             has_been_used_to_find_more_urls BOOLEAN DEFAULT 0,
-            FOREIGN KEY (domain_id) REFERENCES domains (id)
+            session_id TEXT,
+            FOREIGN KEY (domain_id) REFERENCES domains (id),
+            FOREIGN KEY (session_id) REFERENCES discovery_sessions (id)
         )
     ''')
 
