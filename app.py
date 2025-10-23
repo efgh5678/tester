@@ -7,6 +7,7 @@ import json
 import time
 from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
+from database import init_db
 from url_discovery import discover_urls
 from urllib.parse import urlparse
 
@@ -266,4 +267,5 @@ def stop_task(task_id):
     return jsonify({'message': 'Task stop requested'})
 
 if __name__ == '__main__':
+    init_db()
     app.run(debug=True)
