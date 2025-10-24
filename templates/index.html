@@ -16,6 +16,8 @@
             <form id="discover-form">
                 <textarea id="start-urls" placeholder="Enter domains or starting URLs, one per line" required></textarea>
                 <input type="number" id="target-count" placeholder="Target URL count" required>
+                <label for="rate-limit-discovery">Jobs per second:</label>
+                <input type="number" id="rate-limit-discovery" value="10">
                 <textarea id="url-regex" placeholder="Optional: Enter regex patterns for URLs to discover, one per line"></textarea>
                 <button type="submit">Discover URLs</button>
                 <button type="button" id="stop-discovery" style="display: none; background-color: #dc3545; color: white;">Stop All Discoveries</button>
