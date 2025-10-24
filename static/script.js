@@ -151,10 +151,12 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Load URLs for a domain
-    const loadUrls = async (domain) => {
+    const loadUrls = async (domain, isGlobalView = true) => {
         const sessionId = window.location.pathname.split('/')[1];
         let url = `/urls/${domain}`;
-        if (sessionId) {
+
+        // Only add session_id if it's not global view
+        if (sessionId && !isGlobalView) {
             url += `?session_id=${sessionId}`;
         }
 
@@ -164,7 +166,8 @@ document.addEventListener('DOMContentLoaded', () => {
             let allUrls = [];
             for (const d of domains) {
                 let domainUrl = `/urls/${d}`;
-                if (sessionId) {
+                // Only add session_id if it's not global view
+                if (sessionId && !isGlobalView) {
                     domainUrl += `?session_id=${sessionId}`;
                 }
                 const urlsResponse = await fetch(domainUrl);
@@ -314,13 +317,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // View toggle logic
     viewToggleCheckbox.addEventListener('change', () => {
         const sessionId = window.location.pathname.split('/')[1];
+        const selectedDomain = document.querySelector('input[name="domain"]:checked').value;
+
         if (viewToggleCheckbox.checked) {
             viewToggleLabel.textContent = 'Global View';
-            loadUrls('all');
+            loadUrls(selectedDomain, true); // Global view
         } else {
             viewToggleLabel.textContent = 'Actual View';
             if (sessionId) {
-                loadUrlsForSession(sessionId);
+                loadUrls(selectedDomain, false); // Session view
             } else {
                 urlList.innerHTML = '<div>No active discovery session.</div>';
             }

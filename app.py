@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from database import init_db
 from url_discovery import discover_urls
 from urllib.parse import urlparse
+from database import init_db
 
 def get_domain_from_url(url):
     """Extracts the domain from a URL."""
